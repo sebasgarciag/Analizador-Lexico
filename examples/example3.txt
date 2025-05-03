@@ -1,0 +1,2 @@
+/* Comentario externo /* comentario interno */ fin */
+string vacia = ""; 

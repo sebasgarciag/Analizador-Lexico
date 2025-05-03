@@ -1,0 +1,8 @@
+int main() {
+    int x = 42;
+    float y = x + 3.14;
+    // Esto es un comentario
+    if (x > 0) {
+        y = y * 2;
+    }
+} 

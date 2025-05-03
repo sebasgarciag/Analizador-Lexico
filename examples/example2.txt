@@ -1,0 +1,4 @@
+int a = 10;
+$var = 20; // Token desconocido: $
+/* Comentario
+   Comentario */ 
