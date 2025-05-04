@@ -218,4 +218,139 @@ El analizador proporciona una salida detallada que incluye:
 2. **Errores**:
    ```
    Error en línea 1, columna 5: Invalid identifier (starts with number): 123abc
-   ``` 
+   ```
+
+## Funcionamiento Interno
+
+### Estructura de Datos
+
+#### Token
+```python
+class Token(NamedTuple):
+    type: str    # Tipo del token (IDENTIFIER, NUMBER, STRING, etc.)
+    value: str   # Valor literal del token
+    line: int    # Número de línea donde se encontró
+    column: int  # Número de columna donde se encontró
+```
+
+### Funciones Principales
+
+#### 1. `tokenize(text: str) -> List[Token]`
+Función principal que convierte el texto de entrada en una lista de tokens.
+
+**Parámetros:**
+- `text`: String con el código fuente a analizar
+
+**Retorna:**
+- Lista de tokens encontrados en el código
+
+**Funcionamiento:**
+1. Inicializa contadores de línea y columna
+2. Mantiene una pila para rastrear comentarios anidados
+3. Procesa el texto secuencialmente
+4. Para cada posición:
+   - Si está dentro de un comentario, busca inicio/fin de comentario
+   - Si no, intenta hacer coincidir patrones de tokens
+   - Actualiza posición y contadores
+   - Valida y agrega tokens encontrados
+
+#### 2. `validate_token(token: Token) -> List[Token]`
+Valida un token y lo convierte al tipo apropiado o genera un token de error.
+
+**Parámetros:**
+- `token`: Token a validar
+
+**Retorna:**
+- Lista con el token validado o un token de error
+
+**Casos de Validación:**
+1. **Identificadores Inválidos**:
+   ```python
+   if token.type == 'INVALID_IDENTIFIER':
+       return [Token('ERROR', f'Invalid identifier (starts with number): {token.value}', token.line, token.column)]
+   ```
+
+2. **Números Inválidos**:
+   ```python
+   elif token.type == 'INVALID_NUMBER':
+       return [Token('ERROR', f'Invalid number format: {token.value}', token.line, token.column)]
+   ```
+
+3. **Palabras Reservadas y Tipos**:
+   ```python
+   elif token.type == 'IDENTIFIER':
+       if token.value in RESERVED_WORDS:
+           return [Token(token.value.upper(), token.value, token.line, token.column)]
+       elif token.value in TYPE_WORDS:
+           return [Token('TYPE', token.value, token.line, token.column)]
+   ```
+
+4. **Strings**:
+   ```python
+   elif token.type == 'STRING':
+       if not token.value.endswith('"'):
+           return [Token('ERROR', 'Unterminated string literal', token.line, token.column)]
+       return [Token('STRING', token.value[1:-1], token.line, token.column)]
+   ```
+
+### Patrones de Tokens
+
+El analizador utiliza expresiones regulares para identificar los diferentes tipos de tokens:
+
+```python
+TOKEN_TYPES = [
+    ('WHITESPACE', r'\s+'),                    # Espacios en blanco
+    ('COMMENT_START', r'/\*'),                 # Inicio de comentario multilínea
+    ('COMMENT_END', r'\*/'),                   # Fin de comentario multilínea
+    ('LINE_COMMENT', r'//.*'),                 # Comentario de línea
+    ('INVALID_IDENTIFIER', r'\d+[a-zA-Z_][a-zA-Z0-9_]*'),  # Identificadores que empiezan con número
+    ('INVALID_NUMBER', r'\d+\.\d+\.\d+'),      # Números inválidos como 1.2.3
+    ('NUMBER', r'\d+(\.\d+)?'),                # Números válidos
+    ('STRING', r'"[^"\n]*"?'),                 # Strings
+    ('IDENTIFIER', r'[a-zA-Z_][a-zA-Z0-9_]*'), # Identificadores válidos
+    ('OPERATOR', r'[+\-*/=<>!&|]+'),          # Operadores
+    ('PUNCTUATION', r'[(){}\[\];,.]'),        # Símbolos de puntuación
+    ('UNKNOWN', r'.')                          # Caracteres no reconocidos
+]
+```
+
+### Flujo de Procesamiento
+
+1. **Inicialización**:
+   - Se define la lista de patrones de tokens
+   - Se inicializan contadores de posición
+   - Se crea una pila vacía para comentarios
+
+2. **Procesamiento de Caracteres**:
+   - Se lee el texto secuencialmente
+   - Se mantiene seguimiento de línea y columna
+   - Se detectan saltos de línea
+
+3. **Manejo de Comentarios**:
+   - Se detectan comentarios de línea (`//`)
+   - Se detectan comentarios multilínea (`/* */`)
+   - Se previenen comentarios anidados
+
+4. **Tokenización**:
+   - Se intentan hacer coincidir patrones
+   - Se validan los tokens encontrados
+   - Se generan tokens de error cuando es necesario
+
+5. **Validación Final**:
+   - Se verifica que no queden comentarios sin cerrar
+   - Se procesan los últimos tokens
+   - Se retorna la lista completa de tokens
+
+### Ejemplo de Flujo
+
+Para el código:
+```c
+int x = 42;
+```
+
+El proceso es:
+1. Encuentra `int` → Token(TYPE, 'int', 1, 1)
+2. Encuentra `x` → Token(IDENTIFIER, 'x', 1, 5)
+3. Encuentra `=` → Token(OPERATOR, '=', 1, 7)
+4. Encuentra `42` → Token(NUMBER, '42', 1, 9)
+5. Encuentra `;` → Token(PUNCTUATION, ';', 1, 11) 
