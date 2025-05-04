@@ -1,3 +1,9 @@
+// Ejemplo 1: Código válido con diferentes tipos de tokens
+// - Declaración de función
+// - Variables y tipos de datos
+// - Operadores aritméticos
+// - Comentario de línea
+// - Estructura de control if
 int main() {
     int x = 42;
     float y = x + 3.14;

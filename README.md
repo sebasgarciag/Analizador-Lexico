@@ -8,19 +8,19 @@ Este proyecto implementa un analizador léxico (lexer) robusto para un lenguaje 
   - Palabras reservadas (`if`, `else`, `while`, `return`, `int`, `float`, `void`)
   - Identificadores (variables y nombres de funciones)
   - Números (enteros y decimales)
-  - Strings con soporte para caracteres de escape
+  - Strings
   - Operadores aritméticos y de comparación
   - Símbolos de puntuación y delimitadores
 
 - **Manejo de Comentarios**:
   - Comentarios de línea simple (`//`)
   - Comentarios multilínea (`/* */`)
-  - Soporte para comentarios anidados
+  - Detección de comentarios anidados (reportados como error)
 
 - **Seguimiento de Posición**:
   - Número de línea preciso
-  - Número de columna preciso
-  - Mensajes de error detallados con ubicación exacta
+  - Número de columna precisa
+  - Tokens de error con información detallada
 
 ## Requisitos
 
@@ -40,9 +40,27 @@ Este proyecto implementa un analizador léxico (lexer) robusto para un lenguaje 
    pip install -r requirements.txt
    ```
 
+## Estructura del Proyecto
+
+```
+analizador_lexico/
+├── src/
+│   └── lexer.py          # Implementación principal del analizador
+├── tests/
+│   └── test_lexer.py     # Suite de pruebas unitarias
+├── examples/
+│   ├── example1.txt      # Ejemplo básico de código válido
+│   ├── example2.txt      # Ejemplo con error de carácter inválido
+│   ├── example3.txt      # Ejemplo con error de comentario anidado
+│   └── example4.txt      # Ejemplo con múltiples errores
+├── test_examples.py      # Script para probar todos los archivos de ejemplo
+├── requirements.txt      # Dependencias del proyecto
+└── README.md            # Este archivo
+```
+
 ## Uso
 
-### Como Módulo
+### 1. Como Módulo en tu Código
 
 ```python
 from src.lexer import tokenize
@@ -55,40 +73,34 @@ int main() {
 }
 '''
 
-try:
-    tokens = tokenize(code)
-    for token in tokens:
-        print(token)
-except ValueError as e:
-    print(f"Error léxico: {e}")
+tokens = tokenize(code)
+for token in tokens:
+    if token.type == 'ERROR':
+        print(f"Error en línea {token.line}, columna {token.column}: {token.value}")
+    else:
+        print(f"Token: {token.type}, Valor: {token.value}")
 ```
 
-### Como Script
+### 2. Ejecutar el Analizador Directamente
 
 ```bash
 python src/lexer.py
 ```
+Este comando analizará el archivo `examples/example1.txt` y mostrará los tokens encontrados.
 
-Por defecto, el script analizará el archivo `examples/example1.txt`.
+### 3. Ejecutar los Ejemplos
 
-## Estructura del Proyecto
-
+```bash
+python test_examples.py
 ```
-analizador_lexico/
-├── src/
-│   └── lexer.py          # Implementación principal del analizador
-├── tests/
-│   └── test_lexer.py     # Suite de pruebas
-├── examples/
-│   ├── example1.txt      # Ejemplo básico
-│   ├── example2.txt      # Ejemplo con comentarios
-│   ├── example3.txt      # Ejemplo con strings
-│   └── example4.txt      # Ejemplo con operadores
-├── docs/
-│   └── USER_MANUAL.md    # Manual de usuario detallado
-├── requirements.txt      # Dependencias del proyecto
-└── README.md            # Este archivo
+Este script ejecutará el analizador sobre los cuatro archivos de ejemplo y mostrará los resultados detallados.
+
+### 4. Ejecutar las Pruebas Unitarias
+
+```bash
+python -m pytest tests/test_lexer.py -v
 ```
+Este comando ejecutará todas las pruebas unitarias con información detallada.
 
 ## Tipos de Tokens
 
@@ -98,50 +110,79 @@ El analizador reconoce los siguientes tipos de tokens:
 |-------------|--------------------------------|------------------------|
 | IDENTIFIER  | Nombres de variables/funciones  | `variable`, `func`    |
 | NUMBER      | Números enteros o decimales    | `42`, `3.14`          |
-| STRING      | Cadenas de texto con escape    | `"Hello\nWorld"`      |
+| STRING      | Cadenas de texto               | `"Hello World"`       |
 | OPERATOR    | Operadores                     | `+`, `-`, `*`, `/`    |
 | KEYWORD     | Palabras reservadas            | `if`, `while`, `int`  |
 | DELIMITER   | Símbolos de puntuación         | `{`, `}`, `;`        |
+| ERROR       | Tokens con errores             | Errores léxicos       |
 
-### Caracteres de Escape en Strings
+## Manejo de Errores
 
-Los strings soportan los siguientes caracteres de escape:
-- `\n`: Nueva línea
-- `\t`: Tabulación
-- `\r`: Retorno de carro
-- `\\`: Barra invertida
-- `\"`: Comilla doble
-- `\'`: Comilla simple
+El analizador detecta y reporta los siguientes tipos de errores como tokens de tipo 'ERROR':
 
-## Ejemplos
+1. **Identificadores Inválidos**:
+   - Identificadores que comienzan con números
+   - Ejemplo: `123abc`
+   - Error: "Invalid identifier (starts with number): 123abc"
 
-### Código Simple
+2. **Números Inválidos**:
+   - Números con múltiples puntos decimales
+   - Ejemplo: `1.2.3`
+   - Error: "Invalid number format: 1.2.3"
+
+3. **Strings Sin Cerrar**:
+   - Strings que no tienen la comilla de cierre
+   - Ejemplo: `"texto incompleto`
+   - Error: "Unterminated string literal"
+
+4. **Comentarios Anidados**:
+   - Comentarios multilínea dentro de otros comentarios
+   - Ejemplo: `/* externo /* interno */ fin */`
+   - Error: "Nested comment detected at line X, column Y"
+
+5. **Caracteres Inválidos**:
+   - Caracteres que no son parte del lenguaje
+   - Ejemplo: `$`, `@`, `#`
+   - Error: "Unexpected character: $"
+
+## Ejemplos de Código
+
+### 1. Código Válido (example1.txt)
 ```c
 int main() {
     int x = 42;
-    return x;
+    float y = x + 3.14;
+    // Esto es un comentario
+    if (x > 0) {
+        y = y * 2;
+    }
 }
 ```
 
-### Con Comentarios
+### 2. Código con Error de Carácter (example2.txt)
 ```c
-// Este es un comentario de línea
-/* Este es un
-   comentario multilínea */
-int x = 10;
+int a = 10;
+$var = 20; // Token desconocido: $
+/* Comentario
+   Comentario */
 ```
 
-### Con Strings y Operadores
+### 3. Código con Comentario Anidado (example3.txt)
 ```c
-string msg = "Hello!";
-float y = 3.14 * 2;
+/* Comentario externo /* comentario interno */ fin */
+string vacia = "";
 ```
 
-## Pruebas
+### 4. Código con Múltiples Errores (example4.txt)
+```c
+int 123abc = 5;        // Error: identificador inválido
+float x = 1.2.3;       // Error: número inválido
+string fail = "sin cerrar; // Error: string sin cerrar
+```
 
-El proyecto incluye una suite completa de pruebas unitarias que verifican todas las funcionalidades del analizador:
+## Pruebas Unitarias
 
-### Tipos de Pruebas
+El proyecto incluye pruebas unitarias que verifican:
 
 1. **Análisis Básico**:
    - Tokenización de expresiones simples
@@ -151,64 +192,30 @@ El proyecto incluye una suite completa de pruebas unitarias que verifican todas 
 2. **Manejo de Comentarios**:
    - Comentarios de línea simple
    - Comentarios multilínea
-   - Comentarios anidados
-   - Preservación de números de línea
+   - Detección de comentarios anidados
 
 3. **Procesamiento de Strings**:
    - Strings básicos
-   - Caracteres de escape
    - Strings vacíos
    - Detección de strings sin cerrar
 
 4. **Manejo de Errores**:
+   - Identificadores inválidos
+   - Números malformados
    - Caracteres no reconocidos
-   - Tokens malformados
-   - Comentarios sin cerrar
-   - Posicionamiento preciso de errores
+   - Comentarios anidados
 
-### Ejecutar las Pruebas
+## Formato de Salida
 
-```bash
-# Ejecutar todas las pruebas
-python -m pytest tests/test_lexer.py -v
+El analizador proporciona una salida detallada que incluye:
 
-# Ejecutar una prueba específica
-python -m pytest tests/test_lexer.py::test_nested_comments -v
-```
+1. **Tokens Válidos**:
+   ```
+   TYPE         | Línea  1, Col  1 | 'int'
+   IDENTIFIER   | Línea  1, Col  5 | 'main'
+   ```
 
-## Manejo de Errores
-
-El analizador proporciona mensajes de error detallados cuando encuentra caracteres no reconocidos:
-
-```python
-try:
-    tokens = tokenize("int $x = 10;")
-except ValueError as e:
-    print(e)  # Imprime: "Unexpected character '$' at position 4 (line 1, column 5)"
-```
-
-## Funcionamiento Interno
-
-El analizador léxico funciona siguiendo estos pasos:
-
-1. **Inicialización**: 
-   - Se define una lista de patrones de tokens usando expresiones regulares
-   - Cada patrón corresponde a un tipo específico de token (números, identificadores, etc.)
-
-2. **Análisis**:
-   - El texto se procesa secuencialmente, caracter por caracter
-   - Para cada posición, se intentan hacer coincidir los patrones definidos
-   - Cuando se encuentra una coincidencia, se crea un token con:
-     * Tipo de token
-     * Valor literal
-     * Número de línea
-     * Número de columna
-
-3. **Manejo Especial**:
-   - Los espacios en blanco y comentarios se procesan pero no generan tokens
-   - Las palabras reservadas se identifican después de coincidir como identificadores
-   - Se mantiene un seguimiento preciso de la posición en el código
-
-4. **Gestión de Errores**:
-   - Si se encuentra un caracter no reconocido, se lanza una excepción
-   - La excepción incluye la posición exacta del error 
+2. **Errores**:
+   ```
+   Error en línea 1, columna 5: Invalid identifier (starts with number): 123abc
+   ``` 

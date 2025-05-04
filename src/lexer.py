@@ -17,208 +17,183 @@ Características principales:
 """
 
 import re
-from typing import List, Optional
+from typing import List, NamedTuple
 import os
 
-# Definición de tipos de token y sus expresiones regulares
+# Definición de tipos de tokens
 TOKEN_TYPES = [
-    ("WHITESPACE", r"\s+"),                    # Espacios, tabs, saltos de línea
-    ("COMMENT", r"//.*|/\*[\s\S]*?\*/"),      # Comentarios // y /* */
-    ("NUMBER", r"\d+(?:\.\d+)?"),             # Enteros y decimales
-    ("STRING", r'"(?:\\.|[^"\\])*"'),         # Strings con escape
-    ("IDENTIFIER", r"[a-zA-Z_][a-zA-Z0-9_]*"), # Identificadores
-    ("OPERATOR", r"\+|\-|\*|\/|==|!=|<=|>=|<|>"), # Operadores
-    ("ASSIGN", r"="),                         # Asignación
-    ("LPAREN", r"\("),                        # Paréntesis izquierdo
-    ("RPAREN", r"\)"),                        # Paréntesis derecho
-    ("LBRACE", r"{"),                         # Llave izquierda
-    ("RBRACE", r"}"),                         # Llave derecha
-    ("SEMICOLON", r";"),                      # Punto y coma
+    ('WHITESPACE', r'\s+'),
+    ('COMMENT_START', r'/\*'),
+    ('COMMENT_END', r'\*/'),
+    ('LINE_COMMENT', r'//.*'),
+    ('INVALID_IDENTIFIER', r'\d+[a-zA-Z_][a-zA-Z0-9_]*'),  # Identificadores que empiezan con número
+    ('INVALID_NUMBER', r'\d+\.\d+\.\d+'),  # Números inválidos como 1.2.3
+    ('NUMBER', r'\d+(\.\d+)?'),
+    ('STRING', r'"[^"\n]*"?'),
+    ('IDENTIFIER', r'[a-zA-Z_][a-zA-Z0-9_]*'),
+    ('OPERATOR', r'[+\-*/=<>!&|]+'),
+    ('PUNCTUATION', r'[(){}\[\];,.]'),
+    ('UNKNOWN', r'.')  # Captura cualquier carácter no reconocido
 ]
 
-# Palabras reservadas del lenguaje
-KEYWORDS = {"if", "else", "while", "return", "int", "float", "void"}
-
-# Caracteres de escape permitidos
-ESCAPE_CHARS = {
-    'n': '\n',
-    't': '\t',
-    'r': '\r',
-    '\\': '\\',
-    '"': '"',
-    "'": "'"
+# Palabras reservadas y tipos
+RESERVED_WORDS = {
+    'if', 'else', 'while', 'for', 'return'
 }
 
-class Token:
-    """
-    Representa un token individual en el análisis léxico.
-    
-    Attributes:
-        type (str): Tipo del token (ej: 'IDENTIFIER', 'NUMBER', etc.)
-        value (str): Valor literal del token
-        line (int): Número de línea donde se encontró el token
-        column (int): Número de columna donde se encontró el token
-    """
-    
-    def __init__(self, type: str, value: str, line: int, column: int):
-        """
-        Inicializa un nuevo token.
-        
-        Args:
-            type: Tipo del token
-            value: Valor literal del token
-            line: Número de línea
-            column: Número de columna
-        """
-        self.type = type
-        self.value = value
-        self.line = line
-        self.column = column
+TYPE_WORDS = {
+    'int', 'float', 'string', 'void'
+}
 
-    def __repr__(self) -> str:
-        """
-        Retorna una representación string del token.
-        
-        Returns:
-            str: Representación formateada del token
-        """
-        return f"Token({self.type}, {self.value!r}, line={self.line}, column={self.column})"
+class Token(NamedTuple):
+    type: str
+    value: str
+    line: int
+    column: int
 
-def process_string_literal(value: str) -> str:
-    """
-    Procesa un string literal, manejando caracteres de escape.
-    
-    Args:
-        value (str): El string literal incluyendo las comillas
-        
-    Returns:
-        str: El string procesado con los caracteres de escape interpretados
-    """
-    # Remover las comillas del inicio y final
-    content = value[1:-1]
-    result = []
-    i = 0
-    while i < len(content):
-        if content[i] == '\\' and i + 1 < len(content):
-            escape_char = content[i + 1]
-            if escape_char in ESCAPE_CHARS:
-                result.append(ESCAPE_CHARS[escape_char])
-                i += 2
-                continue
-        result.append(content[i])
-        i += 1
-    return ''.join(result)
+def validate_token(token: Token) -> List[Token]:
+    """Valida un token y retorna una lista de tokens o errores."""
+    if token.type == 'INVALID_IDENTIFIER':
+        return [Token('ERROR', f'Invalid identifier (starts with number): {token.value}', token.line, token.column)]
+    elif token.type == 'INVALID_NUMBER':
+        return [Token('ERROR', f'Invalid number format: {token.value}', token.line, token.column)]
+    elif token.type == 'IDENTIFIER':
+        # Convertir palabras reservadas y tipos
+        if token.value in RESERVED_WORDS:
+            return [Token(token.value.upper(), token.value, token.line, token.column)]
+        elif token.value in TYPE_WORDS:
+            return [Token('TYPE', token.value, token.line, token.column)]
+    elif token.type == 'STRING':
+        # Validar strings
+        if not token.value.endswith('"'):
+            return [Token('ERROR', 'Unterminated string literal', token.line, token.column)]
+        # Remover las comillas para el valor final
+        return [Token('STRING', token.value[1:-1], token.line, token.column)]
+    elif token.type == 'UNKNOWN':
+        return [Token('ERROR', f'Unexpected character: {token.value}', token.line, token.column)]
+    return [token]
 
 def tokenize(text: str) -> List[Token]:
-    """
-    Analiza el texto de entrada y lo convierte en una lista de tokens.
-    
-    Este método implementa el análisis léxico principal. Recorre el texto
-    caracter por caracter, identificando y clasificando cada token según
-    las reglas definidas en TOKEN_TYPES.
-    
-    Args:
-        text (str): El código fuente a analizar
-        
-    Returns:
-        List[Token]: Lista de tokens identificados
-        
-    Raises:
-        ValueError: Si se encuentra un caracter no reconocido
-    """
+    """Convierte el texto de entrada en una lista de tokens."""
     tokens = []
     pos = 0
     line = 1
-    col = 1
-    length = len(text)
+    column = 1
+    comment_stack = []  # Pila para rastrear comentarios anidados
     
-    while pos < length:
-        match_found = False
+    while pos < len(text):
+        match = None
         
-        # Manejo especial para comentarios multilínea
-        if text[pos:pos+2] == '/*':
-            comment_level = 1
-            comment_start = pos
-            pos += 2
-            col += 2
-            
-            while pos < length and comment_level > 0:
-                if text[pos:pos+2] == '/*':
-                    comment_level += 1
-                    pos += 2
-                    col += 2
-                elif text[pos:pos+2] == '*/':
-                    comment_level -= 1
-                    pos += 2
-                    col += 2
+        # Si estamos dentro de un comentario, buscar inicio/fin de comentario
+        if comment_stack:
+            if text[pos:pos+2] == '/*':
+                # Detectar comentario anidado
+                comment_stack.append((line, column))
+                if len(comment_stack) > 1:
+                    tokens.append(Token('ERROR', 
+                                     f'Nested comment detected at line {line}, column {column} ' +
+                                     f'(outer comment started at line {comment_stack[0][0]}, column {comment_stack[0][1]})',
+                                     line, column))
+                pos += 2
+                column += 2
+                continue
+            elif text[pos:pos+2] == '*/':
+                if comment_stack:
+                    comment_stack.pop()
+                pos += 2
+                column += 2
+                continue
+            else:
+                if text[pos] == '\n':
+                    line += 1
+                    column = 1
                 else:
-                    if text[pos] == '\n':
-                        line += 1
-                        col = 1
-                    else:
-                        col += 1
-                    pos += 1
-            
-            if comment_level > 0:
-                raise ValueError(f"Unclosed comment at line {line}, column {col}")
-            continue
+                    column += 1
+                pos += 1
+                continue
         
-        # Intenta hacer match con cada tipo de token
-        for token_type, regex in TOKEN_TYPES:
-            pattern = re.compile(regex)
-            match = pattern.match(text, pos)
-            
+        # Procesar tokens normales
+        for token_type, pattern in TOKEN_TYPES:
+            regex = re.compile(pattern)
+            match = regex.match(text, pos)
             if match:
-                match_found = True
                 value = match.group(0)
                 
-                if token_type == "WHITESPACE":
-                    # Actualizar línea y columna por saltos de línea
-                    line_breaks = value.count("\n")
-                    if line_breaks:
-                        line += line_breaks
-                        col = 1 + len(value) - (value.rfind("\n") + 1)
-                    else:
-                        col += len(value)
-                elif token_type == "COMMENT":
-                    # Solo procesar comentarios de línea simple
-                    if value.startswith('//'):
-                        line_breaks = value.count("\n")
-                        if line_breaks:
-                            line += line_breaks
-                            col = 1 + len(value) - (value.rfind("\n") + 1)
+                if token_type == 'COMMENT_START':
+                    comment_stack.append((line, column))
+                    pos = match.end()
+                    column += len(value)
+                    break
+                elif token_type == 'WHITESPACE' or token_type == 'LINE_COMMENT':
+                    # Actualizar posición y contadores
+                    for char in value:
+                        if char == '\n':
+                            line += 1
+                            column = 1
                         else:
-                            col += len(value)
+                            column += 1
+                    pos = match.end()
+                    break
                 else:
-                    # Procesar token normal
-                    t_type = token_type
-                    if token_type == "IDENTIFIER" and value in KEYWORDS:
-                        t_type = value.upper()  # Convertir palabra reservada en tipo
-                    elif token_type == "STRING":
-                        value = process_string_literal(value)
-                    tokens.append(Token(t_type, value, line, col))
-                    col += len(value)
-                
-                pos = match.end()
+                    # Validar y agregar el token
+                    token = Token(token_type, value, line, column)
+                    tokens.extend(validate_token(token))
+                    pos = match.end()
+                    column += len(value)
                 break
         
-        if not match_found:
-            raise ValueError(f"Unexpected character '{text[pos]}' at position {pos} (line {line}, column {col})")
+        if not match and not comment_stack:
+            # Si no hay coincidencia y no estamos en un comentario, es un error
+            token = Token('UNKNOWN', text[pos], line, column)
+            tokens.extend(validate_token(token))
+            pos += 1
+            column += 1
+    
+    # Verificar si hay comentarios sin cerrar al final del archivo
+    if comment_stack:
+        start_line, start_col = comment_stack[0]
+        tokens.append(Token('ERROR', 
+                          f'Unclosed comment block starting at line {start_line}, column {start_col}',
+                          line, column))
     
     return tokens
 
-if __name__ == "__main__":
-    # Ejemplo de uso del analizador léxico
+def main():
+    # Obtener la ruta del directorio actual
+    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    example_path = os.path.join(current_dir, "examples", "example1.txt")
     
-    # Obtener la ruta al archivo de ejemplo
-    example_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "examples", "example1.txt")
-    
-    # Leer y analizar el archivo
     try:
-        with open(example_path, encoding="utf-8") as f:
+        with open(example_path, 'r', encoding='utf-8') as f:
             code = f.read()
+        
+        print(f"\nAnalizando archivo: {example_path}")
+        print("=" * 50)
+        print("Contenido del archivo:")
+        print(code.rstrip())
+        
+        print("\nTokens encontrados:")
         tokens = tokenize(code)
-        for token in tokens:
-            print(token)
+        
+        # Mostrar errores primero
+        errors = [t for t in tokens if t.type == 'ERROR']
+        if errors:
+            print("\nErrores:")
+            for error in errors:
+                print(f"  Línea {error.line}, Columna {error.column}: {error.value}")
+        
+        # Mostrar tokens válidos
+        print("\nTokens válidos:")
+        valid_tokens = [t for t in tokens if t.type != 'ERROR']
+        for token in valid_tokens:
+            print(f"  {token.type:12} | Línea {token.line:2}, Col {token.column:2} | {token.value!r}")
+        
+        print("=" * 50)
+        
+    except FileNotFoundError:
+        print(f"Error: No se pudo encontrar el archivo {example_path}")
     except Exception as e:
-        print(f"Error: {e}") 
+        print(f"Error inesperado: {e}")
+
+if __name__ == "__main__":
+    main() 

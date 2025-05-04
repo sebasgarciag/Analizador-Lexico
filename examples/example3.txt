@@ -1,2 +1,5 @@
+// Ejemplo 3: Código con error de comentario anidado
+// - Error: comentario multilínea anidado
+// - Declaración válida de string vacío
 /* Comentario externo /* comentario interno */ fin */
 string vacia = ""; 

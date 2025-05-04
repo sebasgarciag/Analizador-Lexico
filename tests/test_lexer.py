@@ -12,7 +12,8 @@ def test_simple():
     """
     code = 'int x = 5;'
     tokens = tokenize(code)
-    assert [t.type for t in tokens] == ['INT', 'IDENTIFIER', 'ASSIGN', 'NUMBER', 'SEMICOLON']
+    assert [t.type for t in tokens] == ['TYPE', 'IDENTIFIER', 'OPERATOR', 'NUMBER', 'PUNCTUATION']
+    assert tokens[0].value == 'int'
     assert tokens[1].value == 'x'
     assert tokens[3].value == '5'
 
@@ -27,22 +28,24 @@ def test_comment_and_whitespace():
     code = 'int x = 1; // comentario\nfloat y = x + 2.0;'
     tokens = tokenize(code)
     types = [t.type for t in tokens]
-    assert 'COMMENT' not in types      # Los comentarios deben ser ignorados
-    assert 'WHITESPACE' not in types   # Los espacios en blanco deben ser ignorados
-    assert tokens[0].type == 'INT'     # Primera palabra reservada
-    assert tokens[5].type == 'FLOAT'   # Segunda palabra reservada
-    assert tokens[-1].type == 'SEMICOLON'
+    assert 'COMMENT_START' not in types  # Los comentarios deben ser ignorados
+    assert 'COMMENT_END' not in types    # Los comentarios deben ser ignorados
+    assert 'LINE_COMMENT' not in types   # Los comentarios deben ser ignorados
+    assert 'WHITESPACE' not in types     # Los espacios en blanco deben ser ignorados
+    assert tokens[0].type == 'TYPE'      # Primera palabra reservada
+    assert tokens[0].value == 'int'      # Valor de la primera palabra reservada
 
 def test_unknown_token():
     """
     Prueba el manejo de caracteres no válidos:
     - Caracter especial no permitido ($)
-    - Debe lanzar un error con mensaje descriptivo
+    - Debe generar un token de error
     """
     code = 'int $x = 2;'
-    with pytest.raises(ValueError) as excinfo:
-        tokenize(code)
-    assert "Unexpected character '$'" in str(excinfo.value)
+    tokens = tokenize(code)
+    errors = [t for t in tokens if t.type == 'ERROR']
+    assert len(errors) == 1
+    assert "Unexpected character: $" in errors[0].value
 
 def test_empty_string_literal():
     """
@@ -58,11 +61,13 @@ def test_unclosed_string():
     """
     Prueba el manejo de strings mal formados:
     - String sin comilla de cierre
-    - Debe lanzar un error de validación
+    - Debe generar un token de error
     """
     code = 'string s = "no cierre;'
-    with pytest.raises(ValueError):
-        tokenize(code)
+    tokens = tokenize(code)
+    errors = [t for t in tokens if t.type == 'ERROR']
+    assert len(errors) == 1
+    assert "Unterminated string literal" in errors[0].value
 
 def test_nested_comments():
     """
@@ -70,42 +75,43 @@ def test_nested_comments():
     - Comentario multilínea externo /* */
     - Comentario multilínea interno /* */
     - Texto después del comentario
-    - Debe ignorar todo el contenido del comentario
+    - Debe generar un token de error por comentario anidado
     """
     code = '/* externo /* interno */ fin */ int x = 1;'
     tokens = tokenize(code)
-    assert len(tokens) == 5  # INT, IDENTIFIER, ASSIGN, NUMBER, SEMICOLON
-    assert tokens[0].type == 'INT'
-    assert tokens[1].type == 'IDENTIFIER'
-    assert tokens[1].value == 'x'
-    assert tokens[2].type == 'ASSIGN'
-    assert tokens[3].type == 'NUMBER'
-    assert tokens[3].value == '1'
-    assert tokens[4].type == 'SEMICOLON'
+    errors = [t for t in tokens if t.type == 'ERROR']
+    assert len(errors) == 1
+    assert "Nested comment detected" in errors[0].value
+    
+    # Verificar que el código después del comentario se procesa correctamente
+    valid_tokens = [t for t in tokens if t.type != 'ERROR']
+    assert len(valid_tokens) == 5  # TYPE, IDENTIFIER, OPERATOR, NUMBER, PUNCTUATION
+    assert valid_tokens[0].type == 'TYPE'
+    assert valid_tokens[0].value == 'int'
+    assert valid_tokens[1].value == 'x'
+    assert valid_tokens[2].value == '='
+    assert valid_tokens[3].value == '1'
 
-def test_string_escape_chars():
+def test_invalid_number():
     """
-    Prueba el manejo de caracteres de escape en strings:
-    - Nueva línea (\n)
-    - Tabulación (\t)
-    - Retorno de carro (\r)
-    - Barra invertida (\\)
-    - Comillas (\", \')
+    Prueba el manejo de números inválidos:
+    - Número con múltiples puntos decimales
+    - Debe generar un token de error
     """
-    code = 'string s = "\\n\\t\\r\\\\\\"\\\'";'
+    code = 'float x = 1.2.3;'
     tokens = tokenize(code)
-    string_token = next(t for t in tokens if t.type == 'STRING')
-    assert string_token.value == '\n\t\r\\"\''
+    errors = [t for t in tokens if t.type == 'ERROR']
+    assert len(errors) == 1
+    assert "Invalid number format" in errors[0].value
 
-def test_multiple_string_escapes():
+def test_invalid_identifier():
     """
-    Prueba el manejo de múltiples strings con escapes:
-    - Dos declaraciones de string en la misma línea
-    - Diferentes combinaciones de caracteres de escape
-    - Verificación de valores procesados correctamente
+    Prueba el manejo de identificadores inválidos:
+    - Identificador que comienza con número
+    - Debe generar un token de error
     """
-    code = 'string s1 = "\\n\\t"; string s2 = "\\r\\\\";'
+    code = 'int 123abc = 5;'
     tokens = tokenize(code)
-    string_tokens = [t for t in tokens if t.type == 'STRING']
-    assert string_tokens[0].value == '\n\t'
-    assert string_tokens[1].value == '\r\\' 
+    errors = [t for t in tokens if t.type == 'ERROR']
+    assert len(errors) == 1
+    assert "Invalid identifier (starts with number)" in errors[0].value 

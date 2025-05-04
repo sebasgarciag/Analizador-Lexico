@@ -1,3 +1,7 @@
+// Ejemplo 4: Código con múltiples errores
+// - Error: identificador inválido (comienza con número)
+// - Error: número inválido (múltiples puntos decimales)
+// - Error: string sin cerrar
 int 123abc = 5;
 float x = 1.2.3;
 string fail = "sin cerrar; 

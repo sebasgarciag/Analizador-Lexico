@@ -1,3 +1,8 @@
+// Ejemplo 2: Código con error de carácter inválido
+// - Declaración válida de variable
+// - Error: uso de carácter no permitido ($)
+// - Comentario de línea
+// - Comentario multilínea válido
 int a = 10;
 $var = 20; // Token desconocido: $
 /* Comentario
